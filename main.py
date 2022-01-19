@@ -99,24 +99,25 @@ def run_all(cores: Optional[int] = None):
     runner = BatchRunnerMP(
         Model,
         nr_processes=cores,  # None = cores available
-        # variable_parameters={
-        #     "proto": [Protocol.CYCLON, Protocol.NEWSCAST],
-        #     "graph": [Graph.GEO, Graph.RANDOM, Graph.LATTICE, Graph.STAR],
-        #     "nodes": [1_000, 10_000],
-        #     "view_size": [20, 50, 100],
-        #     "view_to_send_size": [19, 49, 99],
-        #     "delta_t": [1, 2, 3, 4, 5, 10],
-        #     "disaster_intensity": [0.50, 0.65, 0.80, 0.90, 0.95],
-        # },
         variable_parameters={
             "proto": [Protocol.CYCLON, Protocol.NEWSCAST],
-            "graph": [Graph.GEO, Graph.RANDOM, Graph.LATTICE],
+            "graph": [Graph.GEO, Graph.RANDOM, Graph.LATTICE, Graph.STAR],
             "nodes": [1_000, 10_000],
-            "view_size": [20, 50],
-            "view_to_send_size": [19, 49],
-            "delta_t": [1, 4, 10],
-            "disaster_intensity": [0.50, 0.90],
+            "view_size": [20, 50, 100],
+            "view_to_send_size": [19, 49, 99],
+            "delta_t": [1, 2, 3, 4, 5, 10],
+            "disaster_intensity": [0.50, 0.65, 0.80, 0.90, 0.95],
         },
+        iterations=5,
+        # variable_parameters={
+        #     "proto": [Protocol.CYCLON, Protocol.NEWSCAST],
+        #     "graph": [Graph.GEO, Graph.RANDOM, Graph.LATTICE],
+        #     "nodes": [1_000, 10_000],
+        #     "view_size": [20, 50],
+        #     "view_to_send_size": [19, 49],
+        #     "delta_t": [1, 4, 10],
+        #     "disaster_intensity": [0.50, 0.90],
+        # },
         fixed_parameters={
 
         },
