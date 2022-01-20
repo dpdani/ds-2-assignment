@@ -78,19 +78,20 @@ def run_all(cores: Optional[int] = None):
         def wrapper(*args, **kwargs):
             params, model = runner._run_wrappermp(*args, **kwargs)
             # results[params] = model
-            secho(f"\nWriting report for experiment: {params}\n")
             df: DataFrame = model.datacollector.get_model_vars_dataframe()
             proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity, iteration = params
             df.to_csv(
                 reports_dir / file_name_for_params(proto, graph, nodes, view_size, view_to_send_size, delta_t,
                                                    disaster_intensity, iteration)
             )
+            return params
 
         if runner.processes > 1:
             with tqdm(total_iterations, disable=not runner.display_progress) as pbar:
-                for _ in runner.pool.imap_unordered(
+                for params in runner.pool.imap_unordered(
                         wrapper, run_iter_args
                 ):
+                    secho(f"\nWriting report for experiment: {params}\n")
                     pbar.update()
 
                 # runner._result_prep_mp(results)
