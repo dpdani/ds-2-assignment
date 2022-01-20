@@ -59,6 +59,20 @@ def run_experiment(
     })
 
 
+class RunnerWrapper:
+    @staticmethod
+    def wrapper(runner, reports_dir, *args, **kwargs):
+        params, model = runner._run_wrappermp(*args, **kwargs)
+        # results[params] = model
+        df: DataFrame = model.datacollector.get_model_vars_dataframe()
+        proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity, iteration = params
+        df.to_csv(
+            reports_dir / file_name_for_params(proto, graph, nodes, view_size, view_to_send_size, delta_t,
+                                               disaster_intensity, iteration)
+        )
+        return params
+
+
 @app.command()
 def run_all(cores: Optional[int] = None):
     def runner_run_all(runner: BatchRunnerMP):
@@ -75,21 +89,15 @@ def run_all(cores: Optional[int] = None):
             run_iter_args,
         )
 
-        def wrapper(*args, **kwargs):
-            params, model = runner._run_wrappermp(*args, **kwargs)
-            # results[params] = model
-            df: DataFrame = model.datacollector.get_model_vars_dataframe()
-            proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity, iteration = params
-            df.to_csv(
-                reports_dir / file_name_for_params(proto, graph, nodes, view_size, view_to_send_size, delta_t,
-                                                   disaster_intensity, iteration)
-            )
-            return params
+        run_iter_args = map(
+            lambda _: [runner, reports_dir, *_],
+            run_iter_args,
+        )
 
         if runner.processes > 1:
             with tqdm(total_iterations, disable=not runner.display_progress) as pbar:
                 for params in runner.pool.imap_unordered(
-                        wrapper, run_iter_args
+                        RunnerWrapper.wrapper, run_iter_args
                 ):
                     secho(f"\nWriting report for experiment: {params}\n")
                     pbar.update()
