@@ -37,6 +37,7 @@ class Model(mesa.Model):
         self.schedule = RandomActivation(self)
         if view_to_send_size > view_size:
             view_to_send_size = view_size - 1
+            self.running = False
         for i in self.graph:
             agent = proto.klass(self, i, view_size, view_to_send_size)
             self.schedule.add(agent)
