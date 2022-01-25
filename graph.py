@@ -110,13 +110,19 @@ class Graph(Enum):
                 geo.es[edge_i]["latency"] = 10
             elif 0 <= x <= 41 and 0 <= y <= 41:
                 geo.es[edge_i]["latency"] = 4
-        return geo.to_networkx()
+        return geo
 
     @staticmethod
     def make_random(nodes: int):
         net = networkx.erdos_renyi_graph(nodes, 0.1)
         for edge in net.edges:
             net.edges[edge]['latency'] = 1
+        return net
+
+    @staticmethod
+    def make_i_random(nodes: int):
+        net = igraph.Graph.Erdos_Renyi(nodes, 0.1)
+        net.es[:]["latency"] = 1
         return net
 
     @staticmethod
@@ -127,19 +133,42 @@ class Graph(Enum):
         return net
 
     @staticmethod
+    def make_i_lattice(nodes: int):
+        net = igraph.Graph.Lattice([nodes], circular=True)
+        net.es[:]["latency"] = 1
+        return net
+
+    @staticmethod
     def make_star(nodes: int):
         net = networkx.star_graph(nodes)
         for edge in net.edges:
             net.edges[edge]['latency'] = 1
         return net
 
+    @staticmethod
+    def make_i_star(nodes: int):
+        net = igraph.Graph.Star(nodes, center=0)
+        net.es[:]["latency"] = 1
+        return net
+
     def make(self, nodes: int) -> networkx.Graph:
         match self:
             case Graph.GEO:
-                return self.make_i_geo(nodes)
+                return self.make_geo(nodes)
             case Graph.RANDOM:
                 return self.make_random(nodes)
             case Graph.LATTICE:
                 return self.make_lattice(nodes)
             case Graph.STAR:
                 return self.make_star(nodes)
+
+    def i_make(self, nodes: int) -> igraph.Graph:
+        match self:
+            case Graph.GEO:
+                return self.make_i_geo(nodes)
+            case Graph.RANDOM:
+                return self.make_i_random(nodes)
+            case Graph.LATTICE:
+                return self.make_i_lattice(nodes)
+            case Graph.STAR:
+                return self.make_i_star(nodes)

@@ -1,8 +1,5 @@
-import socket
-import time
-
 from mesa.visualization.ModularVisualization import ModularServer
-from mesa.visualization.modules import BarChartModule, CanvasGrid, ChartModule, NetworkModule
+from mesa.visualization.modules import BarChartModule, ChartModule, NetworkModule
 
 from experiment import Model
 
@@ -67,7 +64,7 @@ def start_server(model_params):
         {"Label": "Alive Degree", "Color": "black"},
     ]:
         charts.append(
-            ChartModule([_], data_collector_name='data_collector')
+            ChartModule([_], data_collector_name='datacollector')
         )
 
     for _ in [
@@ -75,7 +72,7 @@ def start_server(model_params):
         # {"Label": "Alive Degree", "Color": "black"},
     ]:
         charts.append(
-            BarChartModule([_], data_collector_name="data_collector")
+            BarChartModule([_], data_collector_name="datacollector")
         )
 
     server = ModularServer(Model,

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import heapq
+import math
 import random
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 import igraph
 import mesa
 import networkx
+import numpy as np
 from mesa.datacollection import DataCollector
 from mesa.time import RandomActivation
 
@@ -33,16 +36,18 @@ class Model(mesa.Model):
         self.disaster_at = 100 * delta_t
         self.delta_T = delta_t
         self.graph_type = graph
-        self.graph = graph.make(nodes)
+        self.graph = graph.i_make(nodes)
         self.schedule = RandomActivation(self)
         if view_to_send_size > view_size:
             view_to_send_size = view_size - 1
             self.running = False
-        if proto == Protocol.NEWSCAST and view_to_send_size != 19:
+        if proto == Protocol.NEWSCAST and view_to_send_size != 10:
             self.running = False
-        for i in self.graph:
-            agent = proto.klass(self, i, view_size, view_to_send_size)
+        self.agents = []  # accessing self.schedule.agents takes up ~45% of running time, when there's >1000 agents
+        for i in self.graph.vs:
+            agent = proto.klass(self, i.index, view_size, view_to_send_size)
             self.schedule.add(agent)
+            self.agents.append(agent)
         self.datacollector = DataCollector(
             model_reporters={
                 "Clustering Coefficient": self.clustering_coefficient,
@@ -64,17 +69,19 @@ class Model(mesa.Model):
 
             },
         )
-        self._overlay_network = networkx.Graph()
+        self._overlay_network = igraph.Graph()
         self._overlay_network_time = -1
-        self._alive_overlay_network = networkx.Graph()
+        self._alive_overlay_network = igraph.Graph()
         self._alive_overlay_network_time = -1
         self._alive_agents: list[Agent] = []
         self._alive_agents_time = -1
-        self.shortest_paths = networkx.shortest_path(
-            self.graph,
-            weight="latency",
-            method="dijkstra",
-        )
+        self.latencies = np.array(self.graph.shortest_paths(  # uses Dijkstra
+            weights="latency"
+        ), dtype=int)
+        self.proto = proto
+        self.nodes = nodes
+        self.view_size = view_size
+        self.view_to_send_size = view_to_send_size
 
     def step(self) -> None:
         if self.schedule.time <= self.end_at:
@@ -88,10 +95,26 @@ class Model(mesa.Model):
             self.schedule.step()
         else:
             self.running = False
-            del self.graph
+            df = self.datacollector.get_model_vars_dataframe()
+            reports_dir = Path().cwd() / "runs"
+            df.to_csv(
+                reports_dir / f"{self.proto.value} "
+                              f"{self.graph_type.value} "
+                              f"{self.nodes} "
+                              f"{self.view_size} "
+                              f"{self.view_to_send_size} "
+                              f"{self.delta_T} "
+                              f"{self.disaster_intensity} "
+                              f"{0}"
+                              f".csv"
+            )
+            # Avoid pickling large objects when using multiprocessing
+            del self.graph, self.datacollector, self._overlay_network, \
+                self._alive_overlay_network, self.latencies, \
+                self.schedule
 
     def disaster(self):
-        for _ in self.schedule.agents:
+        for _ in self.agents:
             p = self.disaster_intensity
             match self.graph_type:
                 case Graph.GEO:
@@ -104,23 +127,37 @@ class Model(mesa.Model):
                 _.die()
 
     def resurrection(self):
-        for _ in self.schedule.agents:
+        for _ in self.agents:
             _.resurrect()
 
     # Statistics
+    # @property
+    # def overlay_network(self) -> networkx.Graph:
+    #     if self._overlay_network_time == self.schedule.time:
+    #         return self._overlay_network
+    #     g = networkx.Graph()
+    #     for agent in self.agents:
+    #         agent: Agent = agent
+    #         g.add_node(agent.unique_id)
+    #     for agent in self.agents:
+    #         g.add_edges_from([
+    #             (agent.unique_id, _.address.unique_id)
+    #             for _ in agent.view
+    #         ])
+    #     self._overlay_network = g
+    #     self._overlay_network_time = self.schedule.time
+    #     return g
+
     @property
-    def overlay_network(self) -> networkx.Graph:
+    def overlay_network(self) -> igraph.Graph:
+        def edges():
+            for agent in self.agents:
+                for _ in agent.view:
+                    yield agent.unique_id, _.address.unique_id
         if self._overlay_network_time == self.schedule.time:
             return self._overlay_network
-        g = networkx.Graph()
-        for agent in self.schedule.agents:
-            agent: Agent = agent
-            g.add_node(agent.unique_id)
-        for agent in self.schedule.agents:
-            g.add_edges_from([
-                (agent.unique_id, _.address.unique_id)
-                for _ in agent.view
-            ])
+        g = igraph.Graph(len(self.agents))
+        g.add_edges(edges())
         self._overlay_network = g
         self._overlay_network_time = self.schedule.time
         return g
@@ -131,21 +168,21 @@ class Model(mesa.Model):
             return self._alive_agents
         self._alive_agents = list(filter(
             lambda _: not _.dead,
-            self.schedule.agents,
+            self.agents,
         ))
         self._alive_agents_time = self.schedule.time
         return self._alive_agents
 
     @property
-    def alive_overlay_network(self) -> networkx.Graph:
+    def alive_overlay_network(self) -> igraph.Graph:
         if self._alive_overlay_network_time == self.schedule.time:
             return self._alive_overlay_network
-        g = self.overlay_network.copy()
-        g.remove_nodes_from(map(
+        g: igraph.Graph = self.overlay_network.copy()
+        g.delete_vertices(map(
             lambda _: _.unique_id,
             filter(
                 lambda _: _.dead,
-                self.schedule.agents,
+                self.agents,
             )
         ))
         self._alive_overlay_network = g
@@ -153,40 +190,58 @@ class Model(mesa.Model):
         return g
 
     def clustering_coefficient(self) -> float:
-        return networkx.average_clustering(self.overlay_network)
+        return self.overlay_network.transitivity_undirected(
+            mode="zero"  # no triangles => return 0
+        )
 
     def alive_clustering_coefficient(self) -> float:
-        return networkx.average_clustering(self.alive_overlay_network)
+        return self.alive_overlay_network.transitivity_undirected(
+            mode="zero"
+        )
 
     def average_path_length(self):
         # igraph has a significantly faster implementation
-        return igraph.Graph.from_networkx(self.overlay_network).average_path_length()
+        length: float = self.overlay_network.average_path_length()
+        return 0 if math.isnan(length) else length
 
     def alive_average_path_length(self):
-        return igraph.Graph.from_networkx(self.alive_overlay_network).average_path_length()
+        length: float = self.alive_overlay_network.average_path_length()
+        return 0 if math.isnan(length) else length
+
+    # def degree(self):
+    #     # G.degree = [(node, degree), ...]
+    #     return sum(
+    #         map(
+    #             lambda _: _[1],
+    #             self.overlay_network.degree
+    #         )
+    #     ) / len(self.overlay_network.degree)
 
     def degree(self):
-        # G.degree = [(node, degree), ...]
-        return sum(
-            map(
-                lambda _: _[1],
-                self.overlay_network.degree
-            )
-        ) / len(self.overlay_network.degree)
+        from igraph import mean
+        return mean(
+            self.overlay_network.degree()
+        )
+
+    # def alive_degree(self):
+    #     return sum(
+    #         map(
+    #             lambda _: _[1],
+    #             self.alive_overlay_network.degree
+    #         )
+    #     ) / len(self.alive_overlay_network.degree)
 
     def alive_degree(self):
-        return sum(
-            map(
-                lambda _: _[1],
-                self.alive_overlay_network.degree
-            )
-        ) / len(self.alive_overlay_network.degree)
+        from igraph import mean
+        return mean(
+            self.alive_overlay_network.degree()
+        )
 
     def unprocessed_messages(self):
         return sum(
             map(
                 lambda _: len(_.incoming_messages),
-                self.schedule.agents,
+                self.agents,
             )
         )
 
@@ -205,7 +260,7 @@ class Model(mesa.Model):
     #                 lambda _: self.schedule.time - _[0],
     #                 _.incoming_messages,
     #             )) if len(_.incoming_messages) > 0 else [0]
-    #             for _ in self.schedule.agents
+    #             for _ in self.agents
     #         ]))
     #     )[0]
     #     return [int(_) for _ in h]
@@ -216,9 +271,9 @@ class Model(mesa.Model):
                 lambda _:
                 sum([tm[0] - self.schedule.time for tm in _.incoming_messages]) / len(_.incoming_messages)
                 if _.incoming_messages else 0,
-                self.schedule.agents,
+                self.agents,
             )
-        ) / len(self.schedule.agents)
+        ) / len(self.agents)
 
     def alive_average_message_latency(self):
         return sum(
@@ -233,12 +288,12 @@ class Model(mesa.Model):
     def partitions(self):
         if self.schedule.time < 3:
             return 0
-        return networkx.number_connected_components(self.overlay_network)
+        return len(self.overlay_network.clusters())
 
     def alive_partitions(self):
         if self.schedule.time < 3:
             return 0
-        return networkx.number_connected_components(self.alive_overlay_network)
+        return len(self.alive_overlay_network.clusters())
 
     def pollution(self):
         if self.schedule.time == 0:
@@ -353,7 +408,7 @@ class Agent(mesa.Agent):
                 message.from_.push_message(
                     Message(
                         from_=self,
-                        view=self.view_to_send(),
+                        view=self.prepare_reply(message.from_),
                         follow_up=False,
                     ),
                     self.model.schedule.time + self.latency_to(message.from_)
@@ -368,7 +423,7 @@ class Agent(mesa.Agent):
         peer.push_message(
             Message(
                 from_=self,
-                view=self.view_to_send(),
+                view=self.prepare_request(peer),
                 follow_up=True
             ),
             self.model.schedule.time + self.latency_to(peer)
@@ -386,15 +441,7 @@ class Agent(mesa.Agent):
         )
 
     def latency_to(self, to: 'Agent') -> int:
-        path = self.model.shortest_paths[self.unique_id][to.unique_id]
-        latency = 0
-        for i in range(len(path)):
-            try:
-                a, b = path[i], path[i + 1]
-            except IndexError:
-                break
-            latency += self.model.graph.edges[(a, b)]["latency"]
-        return latency
+        return self.model.latencies[self.unique_id][to.unique_id]
 
     def bootstrap(self):
         self.view = View([])
@@ -413,7 +460,7 @@ class Agent(mesa.Agent):
         return list(map(
             lambda _: Descriptor(_, 1, self.model.schedule.time),
             map(
-                lambda _: self.model.schedule.agents[_],
+                lambda _: self.model.agents[_],
                 agent_ids,
             ),
         ))
@@ -421,7 +468,7 @@ class Agent(mesa.Agent):
     def _local_broadcast(self, lowest_id: int, size: int):
         local = list(
             filter(
-                lambda _: not self.model.schedule.agents[_].dead,
+                lambda _: not self.model.agents[_].dead,
                 range(lowest_id, lowest_id + size),
             )
         )
@@ -430,10 +477,10 @@ class Agent(mesa.Agent):
 
     def _graph_local_broadcast(self, node: int):
         local = list(filter(
-            lambda _: not self.model.schedule.agents[_].dead,
+            lambda _: not self.model.agents[_].dead,
             map(
-                lambda _: _[1],
-                self.model.graph.edges(node),
+                lambda _: _.target if _.source == self.unique_id else _.source,
+                self.model.graph.vs[self.unique_id].all_edges(),
             ),
         ))
         random.shuffle(local)
@@ -450,31 +497,37 @@ class Agent(mesa.Agent):
                     View(self._to_descriptors(range(lowest_geo_id, lowest_geo_id + 6)))
             )
         elif 6 <= self.unique_id <= 41:
-            assert (len(self.model.graph) - 42) / 36 == (len(self.model.graph) - 42) // 36
-            size_of_local = (len(self.model.graph) - 42) // 36
+            assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
+            size_of_local = (len(self.model.graph.vs) - 42) // 36
             lowest_local_id = 42 + (self.unique_id - 6) * size_of_local
             lowest_geo_id = 6 + 6 * ((self.unique_id - 6) // 6)
             core_gateway = list(filter(
-                lambda _: 0 <= _[1] <= 5,
-                self.model.graph.edges(self.unique_id)
+                lambda _: 0 <= _ <= 5,
+                map(
+                    lambda _: _.target if _.source == self.unique_id else _.source,
+                    self.model.graph.vs[self.unique_id].all_edges(),
+                ),
             ))
             assert len(core_gateway) == 1
-            core_gateway = core_gateway[0][1]
+            core_gateway = core_gateway[0]
             self.view = (
                     View(self._to_descriptors([core_gateway])) +
                     View(self._to_descriptors(range(lowest_geo_id, lowest_geo_id + 6))) +
                     View(self._to_descriptors(self._local_broadcast(lowest_local_id, size_of_local)))
             )
         else:
-            assert (len(self.model.graph) - 42) / 36 == (len(self.model.graph) - 42) // 36
-            size_of_local = (len(self.model.graph) - 42) // 36
+            assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
+            size_of_local = (len(self.model.graph.vs) - 42) // 36
             lowest_local_id = 42 + size_of_local * ((self.unique_id - 42) // size_of_local)
             geo_gateway = list(filter(
-                lambda _: 6 <= _[1] <= 41,
-                self.model.graph.edges(self.unique_id)
+                lambda _: 6 <= _ <= 41,
+                map(
+                    lambda _: _.target if _.source == self.unique_id else _.source,
+                    self.model.graph.vs[self.unique_id].all_edges(),
+                ),
             ))
             assert len(geo_gateway) == 1
-            geo_gateway = geo_gateway[0][1]
+            geo_gateway = geo_gateway[0]
             self.view = (
                     View(self._to_descriptors([geo_gateway])) +
                     View(self._to_descriptors(self._local_broadcast(lowest_local_id, size_of_local)))
@@ -487,18 +540,18 @@ class Agent(mesa.Agent):
 
     def lattice_bootstrap(self):
         self.view = View(
-            self._to_descriptors([
-                _[1]
-                for _ in self.model.graph.edges(self.unique_id)
-            ])
+            self._to_descriptors(map(
+                lambda _: _.target if _.source == self.unique_id else _.source,
+                self.model.graph.vs[self.unique_id].all_edges(),
+            ))
         )
 
     def star_bootstrap(self):
         self.view = View(
-            self._to_descriptors([
-                _[1]
-                for _ in self.model.graph.edges(self.unique_id)
-            ][:5])
+            self._to_descriptors(list(map(
+                lambda _: _.target if _.source == self.unique_id else _.source,
+                self.model.graph.vs[self.unique_id].all_edges(),
+            ))[:5])
         )
 
     def die(self):
@@ -559,7 +612,10 @@ class Agent(mesa.Agent):
             sorted(sortable)[:self.view_size]
         )))
 
-    def view_to_send(self) -> View:
+    def prepare_request(self, peer: 'Agent') -> View:
+        raise NotImplemented
+
+    def prepare_reply(self, peer: 'Agent') -> View:
         raise NotImplemented
 
     def __lt__(self, other: 'Agent'):
@@ -579,15 +635,26 @@ class Newscast(Agent):
     def select_view(self, view) -> View:
         return self._select_view(view, lambda _: _.hop_count)
 
-    def view_to_send(self) -> View:
+    def prepare_request(self, peer: Agent) -> View:
         v = self.view.descriptors
         v.append(
             Descriptor(address=self, hop_count=0, time=self.model.schedule.time)
         )
         return View(v)
 
+    def prepare_reply(self, peer: Agent) -> View:
+        return self.prepare_request(peer)
+
 
 class Cyclon(Agent):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cemetery = View([])
+
+    def step(self) -> None:
+        self.cemetery = View([])
+        super().step()
+
     def select_peer(self) -> Agent:
         oldest = None
         oldest_age = -1
@@ -602,17 +669,27 @@ class Cyclon(Agent):
         return self._merge_views(view_1, view_2, lambda _: self.model.schedule.time - _.time)
 
     def select_view(self, view) -> View:
-        return self._select_view(view, lambda _: self.model.schedule.time - _.time)
+        v = self._select_view(view, lambda _: self.model.schedule.time - _.time) + self.cemetery
+        return View(v.descriptors[:self.view_size])
 
-    def view_to_send(self) -> View:
-        to_remove = self.view.descriptors
-        random.shuffle(to_remove)
-        to_remove = to_remove[:self.view_size - self.view_to_send_size - 1]
-        v = (self.view - View(to_remove)).descriptors
+    def prepare_request(self, peer: Agent) -> View:
+        v = self.view.descriptors.copy()
+        random.shuffle(v)
+        v = v[:self.view_to_send_size - 1]
         v.append(
             Descriptor(address=self, hop_count=0, time=self.model.schedule.time)
         )
         return View(v)
+
+    def prepare_reply(self, peer: Agent) -> View:
+        to_remove = sorted(
+            self.view.descriptors.copy(),
+            key=lambda _: self.model.schedule.time - _.time
+        )
+        to_remove = View(to_remove[:self.view_to_send_size])
+        self.view = self.view - to_remove
+        self.cemetery += to_remove
+        return to_remove
 
 
 class Protocol(Enum):

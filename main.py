@@ -82,12 +82,6 @@ def run_all(cores: Optional[int] = None):
                 ):
                     # results[params] = model
                     secho(f"\nWriting report for experiment: {params}\n")
-                    df: DataFrame = model.datacollector.get_model_vars_dataframe()
-                    proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity, iteration = params
-                    df.to_csv(
-                        reports_dir / file_name_for_params(proto, graph, nodes, view_size, view_to_send_size, delta_t,
-                                                           disaster_intensity, iteration)
-                    )
                     pbar.update()
 
                 # runner._result_prep_mp(results)
@@ -117,9 +111,9 @@ def run_all(cores: Optional[int] = None):
             "graph": [Graph.GEO, Graph.RANDOM, Graph.LATTICE, Graph.STAR],
             "nodes": [1_000],
             "view_size": [20, 50, 100],
-            "view_to_send_size": [19, 49, 99],
+            "view_to_send_size": [6, 10, 15],  # shuffle length
             "delta_t": [1, 4, 10],
-            "disaster_intensity": [0.50, 0.65, 0.80, 0.90, 0.95],
+            "disaster_intensity": [0.50, 0.75, 0.95],
         },
         # iterations=5,
         # variable_parameters={
