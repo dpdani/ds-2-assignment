@@ -1,0 +1,88 @@
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{
+    positioning,
+    arrows,
+    arrows.meta,
+    shapes.misc,
+    shapes.geometric,
+    shapes.symbols,
+}
+
+\usepackage[active,tightpage]{preview}
+\setlength\PreviewBorder{0pt}%
+
+\begin{document}
+\begin{center}
+\begin{preview}
+\begin{tikzpicture}
+
+\begin{axis}[
+    xlabel={cycles},
+    ylabel={average path length},
+    xmin=0, xmax=300,
+%    ymin=0, ymax=1,
+%    ymin=0, ymax=.08,
+    xmode=linear,
+    ymode=log,
+%    xtick={100,200},
+%    ytick={0,20,40,60,80,100,120},
+    legend pos=outer north east,
+    % ymajorgrids=true,
+    grid style=dashed,
+]
+    
+    \addplot+[
+    solid,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_cyclon_20_random.dat};
+    \addlegendentry{Cyclon 20}
+    
+    \addplot+[
+    densely dashed,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_cyclon_50_random.dat};
+    \addlegendentry{Cyclon 50}
+    
+    \addplot+[
+    densely dotted,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_cyclon_100_random.dat};
+    \addlegendentry{Cyclon 100}
+    
+    \addplot+[
+    solid,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_newscast_20_random.dat};
+    \addlegendentry{Newscast 20}
+    
+    \addplot+[
+    densely dashed,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_newscast_50_random.dat};
+    \addlegendentry{Newscast 50}
+    
+    \addplot+[
+    densely dotted,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=APL] {average_path_length_newscast_100_random.dat};
+    \addlegendentry{Newscast 100}
+\end{axis}
+
+\end{tikzpicture}
+\end{preview}
+\end{center}
+\end{document}

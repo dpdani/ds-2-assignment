@@ -1,0 +1,56 @@
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{
+    positioning,
+    arrows,
+    arrows.meta,
+    shapes.misc,
+    shapes.geometric,
+    shapes.symbols,
+}
+
+\usepackage[active,tightpage]{preview}
+\setlength\PreviewBorder{0pt}%
+
+\begin{document}
+\begin{center}
+\begin{preview}
+\begin{tikzpicture}
+
+\begin{axis}[
+    xlabel={steps},
+    ylabel={partitions},
+    xmin=0, xmax=30,
+    %    ymin=0, ymax=1,
+    %    ymin=0, ymax=.015,
+    xmode=linear,
+    %    ymode=log,
+    %    xtick={100,200},
+    ytick={0,1,2,3,4,5,6},
+    legend pos=outer north east,
+    ymajorgrids=true,
+    grid style=dashed,
+]
+
+\addplot+[
+    solid,
+    color=cyan,
+    mark=square,
+]
+table[meta=PAR] {unrecovered runs.dat};
+\addlegendentry{$d = 50\%$}
+
+\addplot+[
+    solid,
+    color=brown,
+    mark=o,
+]
+table[x=step, y=TIT] {unrecovered runs.dat};
+\addlegendentry{$d = 75\%$}
+\end{axis}
+
+\end{tikzpicture}
+\end{preview}
+\end{center}
+\end{document}

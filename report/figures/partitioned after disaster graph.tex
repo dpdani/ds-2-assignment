@@ -1,0 +1,55 @@
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{
+    positioning,
+    arrows,
+    arrows.meta,
+    shapes.misc,
+    shapes.geometric,
+    shapes.symbols,
+}
+
+\usepackage[active,tightpage]{preview}
+\setlength\PreviewBorder{0pt}%
+
+\begin{document}
+\begin{center}
+\begin{preview}
+\begin{tikzpicture}
+
+\begin{axis}[
+    ybar,
+    xlabel={graph},
+    ylabel={partitioned runs},
+    symbolic x coords={
+        geo,
+        lattice,
+        star,
+        random,
+    },
+    xtick=data,
+%    xmin=0, xmax=30,
+    %    ymin=0, ymax=1,
+    %    ymin=0, ymax=.015,
+%    xmode=linear,
+    %    ymode=log,
+    %    xtick={100,200},
+%    ytick={0,1,2,3,4,5,6},
+%    legend pos=outer north east,
+%    ymajorgrids=true,
+%    grid style=dashed,
+]
+
+\addplot coordinates {
+    (geo, 29)
+    (lattice, 29)
+    (star, 15)
+    (random, 13)
+};
+\end{axis}
+
+\end{tikzpicture}
+\end{preview}
+\end{center}
+\end{document}

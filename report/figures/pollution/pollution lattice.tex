@@ -1,0 +1,88 @@
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{
+    positioning,
+    arrows,
+    arrows.meta,
+    shapes.misc,
+    shapes.geometric,
+    shapes.symbols,
+}
+
+\usepackage[active,tightpage]{preview}
+\setlength\PreviewBorder{0pt}%
+
+\begin{document}
+\begin{center}
+\begin{preview}
+\begin{tikzpicture}
+
+\begin{axis}[
+    xlabel={cycles},
+    ylabel={pollution},
+    xmin=100, xmax=200,
+%    ymin=0, ymax=1,
+%    ymin=0, ymax=.02,
+    xmode=linear,
+    ymode=log,
+%    xtick={100,200},
+%    ytick={0,20,40,60,80,100,120},
+    legend pos=outer north east,
+    % ymajorgrids=true,
+    grid style=dashed,
+]
+    
+    \addplot+[
+    solid,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_cyclon_20_lattice.dat};
+    \addlegendentry{Cyclon 20}
+    
+    \addplot+[
+    densely dashed,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_cyclon_50_lattice.dat};
+    \addlegendentry{Cyclon 50}
+    
+    \addplot+[
+    densely dotted,
+    color=blue,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_cyclon_100_lattice.dat};
+    \addlegendentry{Cyclon 100}
+    
+    \addplot+[
+    solid,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_newscast_20_lattice.dat};
+    \addlegendentry{Newscast 20}
+    
+    \addplot+[
+    densely dashed,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_newscast_50_lattice.dat};
+    \addlegendentry{Newscast 50}
+    
+    \addplot+[
+    densely dotted,
+    color=red,
+    mark=dot,
+    ]
+    table[meta=POL] {pollution_newscast_100_lattice.dat};
+    \addlegendentry{Newscast 100}
+\end{axis}
+
+\end{tikzpicture}
+\end{preview}
+\end{center}
+\end{document}

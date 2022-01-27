@@ -10,7 +10,6 @@ from typing import Any, Callable, Iterable
 
 import igraph
 import mesa
-import networkx
 import numpy as np
 from mesa.datacollection import DataCollector
 from mesa.time import RandomActivation
@@ -131,29 +130,13 @@ class Model(mesa.Model):
             _.resurrect()
 
     # Statistics
-    # @property
-    # def overlay_network(self) -> networkx.Graph:
-    #     if self._overlay_network_time == self.schedule.time:
-    #         return self._overlay_network
-    #     g = networkx.Graph()
-    #     for agent in self.agents:
-    #         agent: Agent = agent
-    #         g.add_node(agent.unique_id)
-    #     for agent in self.agents:
-    #         g.add_edges_from([
-    #             (agent.unique_id, _.address.unique_id)
-    #             for _ in agent.view
-    #         ])
-    #     self._overlay_network = g
-    #     self._overlay_network_time = self.schedule.time
-    #     return g
-
     @property
     def overlay_network(self) -> igraph.Graph:
         def edges():
             for agent in self.agents:
                 for _ in agent.view:
                     yield agent.unique_id, _.address.unique_id
+
         if self._overlay_network_time == self.schedule.time:
             return self._overlay_network
         g = igraph.Graph(len(self.agents))
@@ -200,7 +183,6 @@ class Model(mesa.Model):
         )
 
     def average_path_length(self):
-        # igraph has a significantly faster implementation
         length: float = self.overlay_network.average_path_length()
         return 0 if math.isnan(length) else length
 
@@ -208,28 +190,11 @@ class Model(mesa.Model):
         length: float = self.alive_overlay_network.average_path_length()
         return 0 if math.isnan(length) else length
 
-    # def degree(self):
-    #     # G.degree = [(node, degree), ...]
-    #     return sum(
-    #         map(
-    #             lambda _: _[1],
-    #             self.overlay_network.degree
-    #         )
-    #     ) / len(self.overlay_network.degree)
-
     def degree(self):
         from igraph import mean
         return mean(
             self.overlay_network.degree()
         )
-
-    # def alive_degree(self):
-    #     return sum(
-    #         map(
-    #             lambda _: _[1],
-    #             self.alive_overlay_network.degree
-    #         )
-    #     ) / len(self.alive_overlay_network.degree)
 
     def alive_degree(self):
         from igraph import mean
@@ -252,18 +217,6 @@ class Model(mesa.Model):
                 self.alive_agents,
             )
         )
-
-    # def message_latency_left(self):
-    #     h = np.histogram(
-    #         list(itertools.chain(*[
-    #             list(map(
-    #                 lambda _: self.schedule.time - _[0],
-    #                 _.incoming_messages,
-    #             )) if len(_.incoming_messages) > 0 else [0]
-    #             for _ in self.agents
-    #         ]))
-    #     )[0]
-    #     return [int(_) for _ in h]
 
     def average_message_latency(self):
         return sum(
@@ -395,7 +348,7 @@ class Agent(mesa.Agent):
                 self.send_message()
 
     def read_messages(self):
-        # element 0 has lowest time in the queue; element 0[0] is the time value
+        # element 0 has the lowest time in the queue; element 0[0] is the time value
         while self.incoming_messages and self.incoming_messages[0][0] <= self.model.schedule.time:
             time, message = heapq.heappop(self.incoming_messages)
             view = message.view
@@ -497,7 +450,7 @@ class Agent(mesa.Agent):
                     View(self._to_descriptors(range(lowest_geo_id, lowest_geo_id + 6)))
             )
         elif 6 <= self.unique_id <= 41:
-            assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
+            # assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
             size_of_local = (len(self.model.graph.vs) - 42) // 36
             lowest_local_id = 42 + (self.unique_id - 6) * size_of_local
             lowest_geo_id = 6 + 6 * ((self.unique_id - 6) // 6)
@@ -508,7 +461,7 @@ class Agent(mesa.Agent):
                     self.model.graph.vs[self.unique_id].all_edges(),
                 ),
             ))
-            assert len(core_gateway) == 1
+            # assert len(core_gateway) == 1
             core_gateway = core_gateway[0]
             self.view = (
                     View(self._to_descriptors([core_gateway])) +
@@ -516,7 +469,7 @@ class Agent(mesa.Agent):
                     View(self._to_descriptors(self._local_broadcast(lowest_local_id, size_of_local)))
             )
         else:
-            assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
+            # assert (len(self.model.graph.vs) - 42) / 36 == (len(self.model.graph.vs) - 42) // 36
             size_of_local = (len(self.model.graph.vs) - 42) // 36
             lowest_local_id = 42 + size_of_local * ((self.unique_id - 42) // size_of_local)
             geo_gateway = list(filter(
@@ -526,7 +479,7 @@ class Agent(mesa.Agent):
                     self.model.graph.vs[self.unique_id].all_edges(),
                 ),
             ))
-            assert len(geo_gateway) == 1
+            # assert len(geo_gateway) == 1
             geo_gateway = geo_gateway[0]
             self.view = (
                     View(self._to_descriptors([geo_gateway])) +

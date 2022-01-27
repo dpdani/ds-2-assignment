@@ -1,5 +1,9 @@
 \documentclass[a4paper]{ifacconf}
 
+\makeatletter
+\let\old@ssect\@ssect % Store how ifacconf defines \@ssect
+\makeatother
+
 \usepackage{graphicx}
 
 \usepackage[numbers]{natbib}
@@ -9,6 +13,13 @@
 \usepackage{amsmath}
 
 \usepackage[hidelinks]{hyperref}
+
+\makeatletter
+\def\@ssect#1#2#3#4#5#6{%
+    \NR@gettitle{#6}% Insert key \nameref title grab
+    \old@ssect{#1}{#2}{#3}{#4}{#5}{#6}% Restore ifacconf's \@ssect
+}
+\makeatother
 
 \newcommand{\DT}{\ensuremath{{\Delta}T}}
 
@@ -50,9 +61,9 @@ The experiments are carried out over both protocols, using the parameters presen
         Graph & geo, random, lattice, star \\
         Nodes & \num{1000} \\
         View size & 20, 50, 100 \\
-        View to send size & 19, 49, 99 \\
+        View to send size & 6, 10, 15 \\
         \DT & 1, 4, 10 \\
-        Disaster intensity & 50\%, 65\%, 80\%, 90\%, 95\% \\
+        Disaster intensity & 50\%, 75\%, 95\% \\
     \end{tabular}
     \caption{Parameter values used.}
     \label{tab:parameters}
@@ -79,7 +90,7 @@ It is reasonable to assume that in the steps between cycles, differences in the 
 
 One structured network over which latencies are also modeled is referenced here and in the code as a \emph{Geo} network.
 
-Ideally, this graph is intended to model a network that spans greater geographical regions, having one core ``global'' network of 6 nodes, 6 geographical networks each composed of 6 nodes, and $\lfloor\frac{1000}{36}\rfloor$ nodes for each local network (that is, a network attached to any of the 36 geographical nodes).
+Ideally, this graph is intended to model a network that spans greater geographical regions, having one core ``global'' network of 6 nodes, 6 geographical networks each composed of 6 nodes, and $\lfloor\frac{1000}{36}\rfloor = 27$ nodes for each local network (that is, a network attached to any of the 36 geographical nodes).
 
 The latency of graph edges is defined based on the class of involved nodes, and is summarized in Table~\ref{tab:latency}.
 
@@ -107,7 +118,7 @@ That is, we're interested in finding the effect of latency over the two protocol
 In the Cyclon and Newscast protocols, nodes exchange messages with each other.
 In the presented implementation, this is modeled by means of a discrete event simulation.
 
-Essentially, each message is pushed into the recipient node's incoming messages queue (which is a heap queue), sorted by the time the message is to be read.
+Essentially, each message is pushed into the recipient node's incoming messages queue (which is a heap queue), sorted by the time the message is to be read; that is, the time at which the message was push into the recipient queue, plus the latency between the sender and the recipient.
 
 The reading time is computed by the sender node which uses a pre-computed routing table, which is then used to compute the total latency between the two nodes.
 In all networks, except the Geo network, all edges have latency $= 1$.
@@ -131,20 +142,20 @@ This may not model exactly the behavior of a really running protocol, but no evi
 
 \subsection{Disaster and Resurrection}
 
-At cycle 100, a disaster is set to happen, meaning that an amount of nodes equals to 1000 $\times$ disaster intensity is set to die: losing its memory and halting communications.
-Some nodes are exempt from dying: in the Geo network only local nodes can die, and in the star network, the central node cannot die.
+At cycle 100, a disaster is set to happen, meaning that an amount of nodes equals to 1000 $\times$ disaster intensity is set to crash: losing its memory and halting communications.
+Some nodes are exempt from crashing: in the Geo network only local nodes can crash, and in the star network, the central node cannot crash.
 This is intended to model a supposed higher availability of certain nodes that are more important in the communication network.
 
 Note that regardless of a node's state, routing of messages is not affected.
-This actually has no implications for the Geo and star networks, since the routing nodes are exempted from dying, but in the lattice and random networks this behavior may sound a little unreasonable.
+This actually has no implications for the Geo and star networks, since the routing nodes are exempted from crashing, but in the lattice and random networks this behavior may sound a little unreasonable.
 Nevertheless, we're mostly interested in creating an evaluation baseline in these graphs: this improper feature should not render the results meaningless.
 
-At cycle 200, all the nodes that died are resurrected, and at cycle 300 the experiment finishes.
-Resurrected nodes undergo bootstrapping once again.
+At cycle 200, all the nodes that crashed are recovered, and at cycle 300 the experiment finishes.
+Recovered nodes undergo bootstrapping once again.
 
 \subsection{Bootstrapping}
 
-By bootstrapping, in the context of the presented implementation, we mean the mechanism for which the view of a node is populated, either at the beginning of the experiment, or when the node is resurrected.
+By bootstrapping, in the context of the presented implementation, we mean the mechanism for which the view of a node is populated, either at the beginning of the experiment, or when the node is recovered.
 
 The bootstrapping mechanism differs for each network type.
 Let us examine them separately.
@@ -192,67 +203,434 @@ Metrics referring to all nodes, indiscriminate of their status, have also been c
     \label{tab:metrics}
 \end{table}
 
-\section{Experimental Results}
+\subsection{Implementation in Python}
 
-An experiment run may thus be referenced as a tuple:
+The model described so far was implemented in Python 3.10.
+This implementation can be found on \cite{implementation}.
+
+Several libraries were used in the making of the implementation; some are listed here in no particular order:
+\begin{itemize}
+    \item \texttt{igraph},
+    \item \texttt{matplotlib},
+    \item \texttt{numpy},
+    \item \texttt{pandas},
+    \item \texttt{typer}.
+\end{itemize}
+
+In Figure~\ref{fig:structure} we can see an outline of the structure of the files involved.
+Most notably, the \texttt{main.py} file can be executed directly and provides both a way to execute one single experiment in an interactive and visual way (calling the \texttt{viz.py} file internally), and a way to execute all the experiments parameterized as in Table~\ref{tab:parameters} using the \texttt{multiprocessing} library for added performance.
+The \texttt{experiment.py} file holds the core instructions that implement the model presented, and the \texttt{graph.py} file holds utilities for building the four classes of graph described.
+Finally, the \texttt{analyses.ipynb} file contains a notebook that produced the data found in the following \S\ref{sec:results}.
+
+\begin{figure}
+\centering\begin{verbatim}
+ds-2-assignment
+├───analyses.ipynb
+├───experiment.py
+├───main.py
+├───viz.py
+├───requirements.txt
+├───report/
+│   └─── ...
+└───runs/
+    └─── ... .csv
+\end{verbatim}
+    \caption{Structure of the implementation files.}
+    \label{fig:structure}
+\end{figure}
+
+The core of the \texttt{experiment.py} file is around the exchange of messages between agents of the protocol, see lines 342--397.
+
+\section{Experimental Results}\label{sec:results}
+
+Let us provide a way to reference experiment runs,\footnote{%
+    That is, an instance of the model being executed from the first to last step, having its results recorded.
+} based on the parameters values employed,\footnote{%
+Recall Table~\ref{tab:parameters}.
+} to be used throughout this section.
+Taking $P$ to mean the protocol, $G$ the graph, $n$ the number of nodes in $G$, $V$ the size of a node's view, $S$ the shuffle length,\footnote{%
+    Not applicable to runs pertaining to Newscast.
+} $\DT$ the number of steps in a cycle, and $d$ the disaster intensity, an experiment run may be unequivocally referenced as a tuple:
 $$
 (P, G, n, V, S, \DT, d)
 $$
 
-\subsection{Clustering Coefficient}
+\subsection{Convergence Metrics}
+
+With regards to the convergence metrics (i.e. clustering coefficient, average degree, average path length), Figures~\ref{fig:clustering-coefficient-geo}--\ref{fig:average-path-length-star}, it is hard to provide valuable insights from the plots.
+
+The values are not as they were expected, and in some instances, even contradictory.
+For instance see Figure~\ref{fig:clustering-coefficient-random}, and recognize that Cyclon 20 averaged a higher clustering coefficient than Cyclon 100, which should not take place since the second should inherently have a higher degree, given the larger view size.
+Consider even, that it is possible, in Cyclon 100, for a node to hold information about 100 neighbors, which amounts to \textasciitilde10\%\footnote{%
+    It is \emph{about} 10\%.
+    For instance, a Geo network of 1000, actually has 1014 nodes.
+    Refer to \cite[\texttt{graph.py}]{implementation} for details.
+} of a 1000 nodes network.
+
+This is probably due to a very sharp difference between the model presented here (the added latency), and the models that were used in \cite{newscast}, and \cite{cyclon}.
+For instance, consider that between steps 2 and 5 of \cite[\S2.2]{cyclon}, a node's view may have changed.
+
+For these reasons, it would possible to devise a new model that considers these issues and tries, for instance, to hold a session memory when interchanging messages between nodes.
+
+\subsection{Partitioned Runs}\label{sec:partitioned}
+
+Let us call an experiment run \emph{partitioned}, if the number of partitions (i.e. connected components) was greater than 1 within the first 100 cycles of the simulation; thus, before disaster.
+The partitioned runs are listed in Table~\ref{tab:partitioned}.
+
+\begin{table*}
+    \centering\begin{tabular}{lllllll}
+        Protocol & Graph & Nodes & View size & Shuffle length & \DT & Disaster intensity \\
+        \hline
+        Cyclon & geo & 1000 & 20 & 6 & 1 & 50\% \\
+        Cyclon & geo & 1000 & 20 & 6 & 1 & 75\% \\
+        Cyclon & geo & 1000 & 20 & 6 & 1 & 95\% \\
+        Cyclon & geo & 1000 & 20 & 10 & 1 & 50\% \\
+        Cyclon & geo & 1000 & 20 & 10 & 1 & 75\% \\
+        Cyclon & geo & 1000 & 20 & 15 & 1 & 50\% \\
+        Cyclon & geo & 1000 & 20 & 15 & 1 & 75\% \\
+        Cyclon & geo & 1000 & 20 & 15 & 1 & 95\% \\
+        Cyclon & geo & 1000 & 50 & 6 & 1 & 50\% \\
+        Cyclon & geo & 1000 & 50 & 6 & 1 & 75\% \\
+        Cyclon & geo & 1000 & 50 & 6 & 1 & 95\% \\
+        Cyclon & geo & 1000 & 100 & 10 & 1 & 50\% \\
+        Cyclon & geo & 1000 & 100 & 10 & 1 & 75\% \\
+        Cyclon & geo & 1000 & 100 & 10 & 1 & 95\% \\
+        Newscast & geo & 1000 & 20 & N/A & 1 & 50\% \\
+        Newscast & geo & 1000 & 20 & N/A & 1 & 75\% \\
+        Newscast & geo & 1000 & 20 & N/A & 1 & 95\% \\
+        Newscast & geo & 1000 & 20 & N/A & 4 & 50\% \\
+        Newscast & geo & 1000 & 20 & N/A & 4 & 75\% \\
+        Newscast & geo & 1000 & 20 & N/A & 4 & 95\% \\
+    \end{tabular}
+    \caption{Partitioned runs.}
+    \label{tab:partitioned}
+\end{table*}
+
+Unsurprisingly, all of them took place in the Geo network, the only one actually exhibiting substantial delays in message exchanges.
+
+It must be noted though, that almost all the partitioned runs were recovered; that is, the number of partitions was greater than 1 for a limited amount of steps.
+In fact, a common behavior of partitioned runs involves an initial phase of a few steps in which the number of partitions is equal to 1, followed by an unstable stage of fluctuations in the number of partitions, later returning to a stable single partition.
+This pattern is exemplified in the run shown in Figure~\ref{fig:recovered-run}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.7\linewidth]{"figures/recovered run"}
+    \caption{Number of partitions in experiment $(\text{Newscast}, \text{geo}, 1000, 20, \text{N/A}, 1, 50\%)$.}
+    \label{fig:recovered-run}
+\end{figure}
+
+Note the behavior of bootstrapping in relation to this Figure.
+That is, in the initial steps of a simulation, the nodes have their views set by the bootstrapping mechanism, which entails that the overlay network is composed of a single connected graph.
+Therefore, it is expected to find a single partition in the first steps.
+Furthermore, at step 10, the \emph{global} nodes have sent messages to each other, according to their bootstrapped view, but are yet to receive them.
+This can explain the fluctuations in number of partitions; that is, in the experiment in Figure, after 10 steps, 10 cycles have also elapsed, thus 10 times have the views of the global nodes been updated.
+But such updates could not include the other global nodes because of their connection's latency, therefore partitioning is likely to happen.
+
+The reasoning above applies to graphs other than Geo as well, since the same preconditions regarding bootstrapping also apply.
+
+This explanation also encourages to think that the extent of initial partitioning is inversely proportional to \DT, which can also explain why most of the partitioned runs pertain to experiments having $\DT = 1$.
+
+There were only two runs which didn't not undergo this recovery behavior.
+Namely:
+\begin{itemize}
+    \item $(\text{Newscast}, \text{geo}, 1000, 20, \text{N/A}, 4, 50\%)$, and
+    \item $(\text{Newscast}, \text{geo}, 1000, 20, \text{N/A}, 4, 75\%)$.
+\end{itemize}
+Their initial behavior with regards to partitioning is shown in Figure~\ref{fig:unrecovered-runs}.
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/unrecovered runs"}
+    \caption{Number of partitions in experiments $(\text{Newscast}, \text{geo}, 1000, 20, \text{N/A}, 1, d).$}
+    \label{fig:unrecovered-runs}
+\end{figure}
 
 
 
-\subsection{Average Path Length}
+Peculiarly, Cyclon runs experienced partitioning exactly at cycle 8,\footnote{%
+    Or step 8, since $\DT = 1$ in all of Cyclon's partitioned runs.
+} not before, nor after.
 
-\subsection{Degree Distribution}
+Although the number of partitioned runs is skewed towards a greater number of Cyclon runs, we should not be mislead to think this is due to Cyclon's higher susceptibility to partitioning.
+In fact, Cyclon runs compose \textasciitilde 75\% of the total runs performed, and 70\% of the partitioned runs, thus it should seem less prone to partitioning.
+Furthermore, all partitioned Cyclon runs were recovered, while 2 out of the 6 partitioned Newscast runs were not.
+Also, it should be noted that Cyclon exhibited no partitioned runs with $\DT > 1$, while Newscast did.
+Considering this, the evidence clearly points to believe that Newscast is more inclined to partitioning than Cyclon.
 
 \subsection{Robustness to catastrophic failures}
 
+Let us conduct a similar reasoning as per the above \S\ref{sec:partitioned}: we will consider the runs that partitioned as a result of the crashing of nodes.
+
+Let us consider a run to be partitioned after disaster, like in the above notion, in case the number of connected components in the overlay graph is greater than 1, between cycles 100 and 200.
+Let us also disregard the set of runs which became partitioned prior to disaster, as we would trivially expect them to be partitioned after disaster as well.
+
+The partitioned-after-disaster runs are listed in Table~\ref{tab:partitioned-disaster}.
+Some of these runs did get back in a single partition before all crashed nodes were recovered, and are marked as such.
+
+\begin{table*}
+    \centering\begin{tabular}{llllllll}
+        Protocol & Graph & Nodes & View size & Shuffle length & \DT & Disaster intensity & Recovered \\
+        \hline
+        Cyclon & geo & 1000 & 20 & 6 & 4 & 95\% & no \\
+        Cyclon & geo & 1000 & 20 & 6 & 10 & 95\% & no \\
+        Cyclon & geo & 1000 & 20 & 10 & 1 & 95\% & no \\
+        Cyclon & geo & 1000 & 20 & 10 & 4 & 95\% & no \\
+        Cyclon & geo & 1000 & 20 & 10 & 10 & 95\% & no \\
+        Cyclon & geo & 1000 & 20 & 15 & 4 & 95\% & yes \\
+        Cyclon & geo & 1000 & 20 & 15 & 10 & 95\% & no \\
+        Cyclon & geo & 1000 & 50 & 6 & 10 & 95\% & yes \\
+        Cyclon & geo & 1000 & 50 & 15 & 10 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 20 & 6 & 1 & 75\% & yes \\
+        Cyclon & lattice & 1000 & 20 & 6 & 1 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 6 & 10 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 6 & 4 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 10 & 1 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 10 & 4 & 75\% & yes \\
+        Cyclon & lattice & 1000 & 20 & 10 & 4 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 10 & 10 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 15 & 1 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 15 & 4 & 95\% & no \\
+        Cyclon & lattice & 1000 & 20 & 15 & 10 & 95\% & no \\
+        Cyclon & lattice & 1000 & 50 & 6 & 1 & 95\% & no \\
+        Cyclon & lattice & 1000 & 50 & 6 & 4 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 6 & 10 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 10 & 1 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 10 & 4 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 10 & 10 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 15 & 1 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 15 & 4 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 50 & 15 & 10 & 95\% & yes \\
+        Cyclon & lattice & 1000 & 100 & 6 & 1 & 95\% & no \\
+        Cyclon & lattice & 1000 & 100 & 6 & 4 & 95\% & no \\
+        Cyclon & lattice & 1000 & 100 & 6 & 10 & 95\% & no \\
+        Cyclon & lattice & 1000 & 100 & 10 & 1 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 6 & 1 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 6 & 4 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 6 & 10 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 10 & 1 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 10 & 4 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 10 & 10 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 15 & 1 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 15 & 4 & 95\% & no \\
+        Cyclon & random & 1000 & 20 & 15 & 10 & 95\% & no \\
+        Cyclon & random & 1000 & 50 & 10 & 1 & 95\% & no \\
+        Cyclon & random & 1000 & 50 & 15 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 6 & 1 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 6 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 6 & 10 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 10 & 1 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 10 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 10 & 10 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 15 & 1 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 15 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 20 & 15 & 10 & 95\% & no \\
+        Cyclon & star & 1000 & 50 & 6 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 50 & 6 & 10 & 95\% & no \\
+        Cyclon & star & 1000 & 50 & 10 & 1 & 95\% & no \\
+        Cyclon & star & 1000 & 50 & 10 & 4 & 95\% & no \\
+        Cyclon & star & 1000 & 50 & 15 & 1 & 95\% & yes \\
+        Cyclon & star & 1000 & 50 & 15 & 4 & 95\% & no \\
+        Newscast & lattice & 1000 & 20 & N/A & 1 & 75\% & yes \\
+        Newscast & lattice & 1000 & 20 & N/A & 1 & 95\% & no \\
+        Newscast & lattice & 1000 & 20 & N/A & 4 & 95\% & no \\
+        Newscast & lattice & 1000 & 50 & N/A & 1 & 95\% & no \\
+        Newscast & lattice & 1000 & 50 & N/A & 4 & 95\% & no \\
+        Newscast & random & 1000 & 20 & N/A & 10 & 95\% & no \\
+        Newscast & random & 1000 & 20 & N/A & 4 & 95\% & no \\
+    \end{tabular}
+    \caption{Runs partitioned after disaster.}
+    \label{tab:partitioned-disaster}
+\end{table*}
+
+Looking at the table, we can notice how the underlying communication graph can impact the tendency to partition.
+In Figure~\ref{fig:partitioned-after-disaster-graph} the distribution of partitioned runs (including those runs that partitioned before disaster) is depicted.
+As mentioned before, 20 out of the 29 partitioned runs over the Geo network, partitioned prior to disaster.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{"figures/partitioned after disaster graph"}
+    \caption{Distribution of runs partitioned, by communication graph.}
+    \label{fig:partitioned-after-disaster-graph}
+\end{figure}
+
+Let us now consider the effect of disaster intensity.
+We can see that 63 out of the 144 (\textasciitilde 44\%) runs with 95\% disaster intensity partitioned after disaster, while only 2 out of 144 (\textasciitilde 1\%) runs with $d = 75\%$, and 0 runs with $d = 50\%$ were affected by the disaster.
+Although it is evident that disaster intensity is a great predictor of a run partitioning, more evidence needs to be collected\footnote{%
+    Possibly, over more numerous graphs.
+} in order to gather a more precise function relating disaster intensity to unrecoverable partitioning.
+
 \subsection{Self-Cleaning}
 
-\subsection{Partitioned Runs}
+The metric related to the self-cleaning behavior of the two protocols is pollution (cf. Table~\ref{tab:metrics}).
+Foremost, we can see from Figures~\ref{fig:pollution-geo}--\ref{fig:pollution-star} that under no circumstances every crashed node was removed from every correct node's view, within 100 cycles.
+This was not expected.\footnote{%
+    See \cite[p.~17]{slides}.
+}
 
-Experiment runs in which the number of partitions (connected components) was greater than 1 within the first 100 steps of the simulation; thus, before disaster.
-
-Unsurprisingly, most of them took place in the Geo network, the only one actually exhibiting substantial delays in message exchanges.
-The non-Geo partitioned runs, though, exhibited similarities in that the only settings combination that produced partitioning was $(\text{Cyclon}, *, 1000, 20, 19, 4, *)$.
-In those six runs, 
-
-Although the number of unrecovered partitioned runs is skewed towards a greater number of Cyclon runs, we should not believe this is due to Cyclon's higher susceptibility to partitioning.
-In fact, Cyclon runs compose XXX\% of the total runs performed.
-
-
+A reasonable explanation related to the distinct feature of latency introduced in the presented model, is that while one node may have crashed, the messages it sent out while still being correct are still ``traversing'' the communication network, even after having crashed.
 
 \section{Conclusions}
 
+We have seen how a model may be devised so that it was different from those proposed in \cite{newscast} and in \cite{cyclon}, and tested the Newscast and Cyclon protocols against it.
+
+We have seen that some of the results presented in this report were not as expected, and have provided some insight into why that would be.
+Nevertheless, we have drawn some conclusions from those results that could be explained on the grounds of the model itself.
+
+It is possible to outline a new model that can overcome the issues encountered, and see if it would still reflect the findings of this one.
+
+
 \bibliography{biblio}
 
-\section{Graphs}
 
 \begin{figure}[p]
     \centering
-    \includegraphics[width=\linewidth]{"figures/clustering coefficient geo"}
+    \includegraphics[width=.9\linewidth]{"figures/clustering_coefficient/clustering coefficient geo"}
     \caption{Clustering coefficient in Geo graphs.}
     \label{fig:clustering-coefficient-geo}
 \end{figure}
 \begin{figure}[p]
     \centering
-    \includegraphics[width=\linewidth]{"figures/clustering coefficient random"}
+    \includegraphics[width=.9\linewidth]{"figures/clustering_coefficient/clustering coefficient random"}
     \caption{Clustering coefficient in random graphs.}
     \label{fig:clustering-coefficient-random}
 \end{figure}
 \begin{figure}[p]
     \centering
-    \includegraphics[width=\linewidth]{"figures/clustering coefficient lattice"}
+    \includegraphics[width=.9\linewidth]{"figures/clustering_coefficient/clustering coefficient lattice"}
     \caption{Clustering coefficient in lattice graphs.}
     \label{fig:clustering-coefficient-lattice}
 \end{figure}
 \begin{figure}[p]
     \centering
-    \includegraphics[width=\linewidth]{"figures/clustering coefficient star"}
+    \includegraphics[width=.9\linewidth]{"figures/clustering_coefficient/clustering coefficient star"}
     \caption{Clustering coefficient in star graphs.}
     \label{fig:clustering-coefficient-star}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/degree/degree geo"}
+    \caption{Degree in Geo graphs.}
+    \label{fig:degree-geo}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/degree/degree random"}
+    \caption{Degree in random graphs.}
+    \label{fig:degree-random}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/degree/degree lattice"}
+    \caption{Degree in lattice graphs.}
+    \label{fig:degree-lattice}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/degree/degree star"}
+    \caption{Degree in star graphs.}
+    \label{fig:degree-star}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_path_length/average path length geo"}
+    \caption{Average path length in Geo graphs.}
+    \label{fig:average-path-length-geo}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_path_length/average path length random"}
+    \caption{Average path length in random graphs.}
+    \label{fig:average-path-length-random}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_path_length/average path length lattice"}
+    \caption{Average path length in lattice graphs.}
+    \label{fig:average-path-length-lattice}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_path_length/average path length star"}
+    \caption{Average path length in star graphs.}
+    \label{fig:average-path-length-star}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/pollution/pollution geo"}
+    \caption{Pollution in Geo graphs.}
+    \label{fig:pollution-geo}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/pollution/pollution random"}
+    \caption{Pollution in random graphs.}
+    \label{fig:pollution-random}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/pollution/pollution lattice"}
+    \caption{Pollution in lattice graphs.}
+    \label{fig:pollution-lattice}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/pollution/pollution star"}
+    \caption{Pollution in star graphs.}
+    \label{fig:pollution-star}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/unprocessed_messages/unprocessed messages geo"}
+    \caption{Unprocessed messages in Geo graphs.}
+    \label{fig:unprocessed-messages-geo}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/unprocessed_messages/unprocessed messages random"}
+    \caption{Unprocessed messages in random graphs.}
+    \label{fig:unprocessed-messages-random}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/unprocessed_messages/unprocessed messages lattice"}
+    \caption{Unprocessed messages in lattice graphs.}
+    \label{fig:unprocessed-messages-lattice}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/unprocessed_messages/unprocessed messages star"}
+    \caption{Unprocessed messages in star graphs.}
+    \label{fig:unprocessed-messages-star}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_message_latency/average message latency geo"}
+    \caption{Average message latency in Geo graphs.}
+    \label{fig:average-message-latency-geo}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_message_latency/average message latency random"}
+    \caption{Average message latency in random graphs.}
+    \label{fig:average-message-latency-random}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_message_latency/average message latency lattice"}
+    \caption{Average message latency in lattice graphs.}
+    \label{fig:average-message-latency-lattice}
+\end{figure}
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=.9\linewidth]{"figures/average_message_latency/average message latency star"}
+    \caption{Average message latency in star graphs.}
+    \label{fig:average-message-latency-star}
 \end{figure}
 
 
