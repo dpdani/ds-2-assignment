@@ -1,19 +1,22 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Type
 
 import typer
-from mesa.batchrunner import BatchRunnerMP
+from mesa.batchrunner import BatchRunner, BatchRunnerMP
 from tqdm import tqdm
 from typer import secho
 
 from experiment import Model, Protocol
+from gpu_experiment import GpuModel
 from graph import Graph
 from viz import start_server
 
 
 app = typer.Typer()
+gpu = typer.Typer()
+app.add_typer(gpu, name="gpu")
 
 
 def file_name_for_params(proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity, iteration):
@@ -57,8 +60,70 @@ def run_experiment(
     })
 
 
-@app.command()
-def run_all(cores: Optional[int] = None):
+def run_experiment_no_ui(
+        model_class: Type[Model],
+        proto: Protocol,
+        graph: Graph,
+        nodes: int,
+        view_size: int,
+        view_to_send_size: int,
+        delta_t: int,
+        disaster_intensity: float,
+):
+    secho(f"Running experiment: "
+          f"{proto=} "
+          f"{graph=} "
+          f"{nodes=} "
+          f"{view_size=} "
+          f"{view_to_send_size=} "
+          f"{delta_t=} "
+          f"{disaster_intensity=}", fg='green')
+    runner = BatchRunner(
+        model_class,
+        variable_parameters={
+            "proto": [proto],
+            "graph": [graph],
+            "nodes": [nodes],
+            "view_size": [view_size],
+            "view_to_send_size": [view_to_send_size],  # shuffle length
+            "delta_t": [delta_t],
+            "disaster_intensity": [disaster_intensity],
+        },
+        fixed_parameters={
+
+        },
+        max_steps=1_000_000,  # actually stops sooner
+    )
+    runner.run_all()
+
+
+@app.command("run-experiment-no-ui")
+def run_experiment_no_ui_cpu(
+        proto: Protocol,
+        graph: Graph,
+        nodes: int,
+        view_size: int,
+        view_to_send_size: int,
+        delta_t: int,
+        disaster_intensity: float,
+):
+    run_experiment_no_ui(Model, proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity)
+
+
+@gpu.command("run-experiment-no-ui")
+def run_experiment_no_ui_gpu(
+        proto: Protocol,
+        graph: Graph,
+        nodes: int,
+        view_size: int,
+        view_to_send_size: int,
+        delta_t: int,
+        disaster_intensity: float,
+):
+    run_experiment_no_ui(GpuModel, proto, graph, nodes, view_size, view_to_send_size, delta_t, disaster_intensity)
+
+
+def run_all(model_class: Type[Model], cores: Optional[int] = None):
     def runner_run_all(runner: BatchRunnerMP):
         run_iter_args, total_iterations = runner._make_model_args_mp()
         # register the process pool and init a queue
@@ -87,7 +152,7 @@ def run_all(cores: Optional[int] = None):
     sys.setrecursionlimit(1_000_000)
     secho(f"{sys.getrecursionlimit()=}")
     runner = BatchRunnerMP(
-        Model,
+        model_class,
         nr_processes=cores,  # None = cores available
         variable_parameters={
             "proto": [Protocol.CYCLON, Protocol.NEWSCAST],
@@ -107,6 +172,16 @@ def run_all(cores: Optional[int] = None):
         runner_run_all(runner)
     except KeyboardInterrupt:
         pass
+
+
+@app.command("run-all")
+def run_all_cpu(cores: Optional[int] = None):
+    run_all(Model, cores)
+
+
+@gpu.command("run-all")
+def run_all_gpu(cores: Optional[int] = None):
+    run_all(GpuModel, cores)
 
 
 if __name__ == '__main__':
