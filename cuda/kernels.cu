@@ -1,0 +1,6 @@
+#include "distances_kernel.cu"
+#include "clean_distances_matrix.cu"
+#include "reduceNeighbored.cu"
+#include "reduceUnrolling2.cu"
+#include "reduceUnrolling4.cu"
+#include "reduceUnrollWarps8.cu"
